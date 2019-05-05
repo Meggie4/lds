@@ -13,28 +13,34 @@ namespace leveldb {
 
 
 size_t Slot_write(const void * ptr, size_t size, size_t count, LDS_Slot * slot ){
+    //将起始地址为ptr, 长度为count字节的数据追加到slot所分配的对象中 
 		//only write to LDS buffer
 		uint32_t write_bytes;//payload
-		write_bytes=size*count;
+		write_bytes=size*count;//写数据的字节数目
 		//printf("lds_io.cc, SLot_write, write_bytes=%d\n",write_bytes);
 		
-		if(slot->size + write_bytes > SLOT_SIZE){
+		if(slot->size + write_bytes > SLOT_SIZE){//如果超过阈值，报错
 			fprintf(stderr,"lds_io.cc, SLot_write, overflow,exit, name=%s, slot->size=%d\n",slot->file_name.c_str(),slot->size );
 			
 			exit(9);
 		
 		}
+        //将追加的数据拷贝到分配给slot的数组
 		memcpy(slot->buffer + slot->write_head,  ptr, write_bytes);
 		
+        //write_head记录了当前位置的偏移
 		slot->write_head += write_bytes ;
-		slot->size += write_bytes;
+		//当前slot存储的数据大小
+        slot->size += write_bytes;
 		//printf("lds_io.cc, SLot_write, size=%d\n",slot->size);
 
+        //返回成功写入的字节数目
 		return write_bytes;
 
 }
 
 size_t Log_write(const void * ptr, size_t size, size_t count, LDS_Log * log ){
+    //日志写
 	/*This function append the construct the log objects*/
 	//only write to LDS buffer
 
@@ -89,17 +95,19 @@ size_t Log_write(const void * ptr, size_t size, size_t count, LDS_Log * log ){
 	
 }
 
-size_t Slot_flush(LDS_Slot *slot){
+size_t Slot_flush(LDS_Slot *slot){//slot下刷
 		/*This function flushes the Chunk data to OS buffer
 		*/
 		//flush to OS buffer
 		//printf("lds_io.cc, Slot_flush, begin\n");
 		
-		
+		//文件偏移量设置为当前slot的物理偏移+slot的下刷偏移
 		lseek64(slot->fd, slot->phy_offset+ slot->flush_offset, SEEK_SET);
 		
+        //下刷的字节数目设置为当前slot的写位置减去下刷偏移，也就是还没有下刷的slot长度
 		uint64_t flush_bytes = slot->write_head - slot->flush_offset;
 		
+        //通过系统调用write,将fd的
 		write(slot->fd, slot->buffer+ slot->flush_offset, flush_bytes);
 		
 		slot->flush_offset =  slot->write_head;
@@ -112,20 +120,26 @@ size_t Slot_flush(LDS_Slot *slot){
 }
 
 size_t Slot_sync(LDS_Slot *slot){
+    //同步，
 	/*This function uses sync_file_range to sync the chunk data to the corresponding slot*/
 	//flush to disk
 	//printf("lds_io.cc, Slot_sync, begin, chun size=%d\n", slot->size);
 	//printf("lds_io.cc, Slot_sync, begin, chun size=%d, flush offset=%d\n", slot->size, slot->flush_offset);
-	Slot_flush(slot);
+	//进行下刷
+    Slot_flush(slot);
 
-
-	char coded_size[8];
+	//slot的最后8个字节用于确定字节的长度
+    char coded_size[8];
 	EncodeFixed64(coded_size, slot->size);
 
+    //将文件偏移量定位到最后8个字节
 	lseek64(slot->fd, slot->phy_offset+ (SLOT_SIZE -8), SEEK_SET);//8 bytes for the chunk size	
-	write(slot->fd, coded_size, 8);
+	//将sstable文件的长度写到最后8个字节
+    write(slot->fd, coded_size, 8);
 	
 	int res;
+    //将数据对应范围的的脏页刷回，而不是整个文件的范围
+    //也就是只将slot的物理偏移量开始，SLOT_SIZE大小的脏页进行下刷
 	res=sync_file_range(slot->fd, slot->phy_offset, SLOT_SIZE , SYNC_FILE_RANGE_WRITE|SYNC_FILE_RANGE_WAIT_AFTER );//SYNC_FILE_RANGE_WRITE
 	//printf("lds_io.cc, Slot_sync, begin, name=%s, phyoffset=%d\n", slot->file_name.c_str(), slot->phy_offset );
 	
@@ -143,7 +157,7 @@ size_t Slot_sync(LDS_Slot *slot){
 
 size_t Slot_close(LDS_Slot *slot){
 	/*Free the LDS buffer*/
-	delete slot;
+	delete slot;//释放slot占用的空间
 }
 
 size_t Log_flush(LDS_Log * log){
@@ -267,15 +281,18 @@ size_t Log_read(void * ptr, size_t size, size_t count, LDS_Log *log){
 
 
 uint64_t Alloc_slot(uint64_t next_file_number_){
+    //分配新的编号
 	//printf("lds_io.cc, Alloc_slot, begin\n");
 	//this function will alloc a free slot number according to the online-map;
 	//exit(9);
 	
 	uint64_t result;
-	result = next_file_number_ %SlotTotal;
+	result = next_file_number_ %SlotTotal;//原本应该所对应的slot编号
 	
 	uint64_t final_number;
 	uint64_t temp;
+    //遍历在线位图，搜索空闲的slot，如果是空闲的，那就把这个slot编号分配出去，被占用了
+    //从当前slot向后
 	for(temp=result; temp< SlotTotal; temp++){//To confirm that the slot is free. If not, find the next following it.
 		if(OnlineMap[temp]==0){//it is free
 			OnlineMap[temp]==1;
@@ -284,7 +301,9 @@ uint64_t Alloc_slot(uint64_t next_file_number_){
 		}
 	
 	}
+    //没有找到
 
+    //从最开始的第1个slot开始，向当前的slot遍历
 	fprintf(stderr,"lds_io.cc, Alloc_slot, round back\n");
 	for(temp= 0 ;temp<result;temp++){ //round back
 		if(OnlineMap[temp]==0){
@@ -302,24 +321,27 @@ uint64_t Alloc_slot(uint64_t next_file_number_){
 
 
 uint64_t read_chunk_size(LDS_Slot *slot){
+    //slot的物理偏移
 	uint64_t offset= slot->phy_offset+ (SLOT_SIZE -8);
 	
-	
+    	
 	//printf("lds_io.cc, read_chunk_size,slot->phy_offset=%d, offset=%llu\n",slot->phy_offset,offset);
 	char coded_size[8];
-	
+	//先同步整个sstable
 	fsync(slot->fd);
 	
 	//sleep(1);
+    //定位到相应的偏移
 	lseek64(slot->fd, offset, SEEK_SET);//8 bytes for the chunk size
-	read(slot->fd, coded_size, 8);
+	//读取slot的最后8个字节，获取sstable的长度
+    read(slot->fd, coded_size, 8);
 	
-	
+
 	
 	//printf("lds_io.cc, read_chunk_size,coded_size=%s\n",coded_size);
 
 	uint64_t size =*(uint64_t*)coded_size;
-	
+	//返回chunk的长度
 	return size;
 	
 }

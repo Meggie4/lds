@@ -43,19 +43,23 @@
 
 // #define FLUSH_BYTES 4096
 
-#define VERSION_LOG_SIZE 0x4000000 //100 0000 0000 0000 0000 0000 0000 //64MB
-#define SLOT_SIZE 4194304	//4MB
-#define BACKUP_SIZE (SLOT_SIZE*4)
+#define VERSION_LOG_SIZE 0x4000000 //100 0000 0000 0000 0000 0000 0000 //版本日志文件占用64MB
+#define SLOT_SIZE 4194304	//插槽的大小为4MB，也就是一个sstable文件为4MB
+#define BACKUP_SIZE (SLOT_SIZE*4)//备份的文件所占的总空间为16MB
 
 namespace leveldb {
 
-class LDS_Slot{
+class LDS_Slot{//定义插槽
 public:
-	char * addr;//physical address;//mmaped address
+    //physical address;//mmaped address
+	//对应的映射地址
+    char * addr;
+    //对应的物理偏移量
 	uint64_t phy_offset;
+    //插槽的大小
 	uint64_t size;
 
-
+    //插槽存储的sstable文件名字
 	std::string file_name;//for debug
 
 	uint64_t write_head;//wirte head
@@ -63,12 +67,14 @@ public:
 	uint64_t sync_offset;//for sync to disk
 
 	void *buffer;//buffer data in  userspace 
-	
+	//对应的fd 
 	int fd;
 
 public:
+    //根据一个sstable文件名来初始化一个插槽
 	LDS_Slot(std::string name);
 
+    //析构函数，释放buffer空间，由malloc分配
 	~LDS_Slot(){
 		free(buffer);
 		
@@ -76,13 +82,17 @@ public:
 
 };	
 
+//定义的日志文件
 class LDS_Log{
 
 public:
+    //映射到虚拟地址空间的地址
 	char *addr;//mmaped address
-	uint64_t phy_offset;
+	//物理的偏移量
+    uint64_t phy_offset;
 	uint64_t size;
 
+    //日志的名字
 	std::string file_name;//for debug
 
 	uint64_t write_head;//
@@ -108,6 +118,7 @@ public:
 	}
 };
 
+//用于其他
 class LDS_Others{
 public:
 	void* buffer;
@@ -132,26 +143,34 @@ public:
 
 };
 
+//整个的管理类
 class LDS{
 
 	public:
+        //根据设备名来构造LDS对象
 		LDS(const std::string& storage_path);
 		LDS(const std::string& storage_path, int flash_using_exist);
+        //根据sstable名字分配一个插槽
 		virtual LDS_Slot * alloc_slot(const std::string& chunk_name);
 		//virtual LDS_Log * alloc_version(const std::string& name)=0;
 		//virtual LDS_Log * alloc_backup(const std::string& name)=0;
-		virtual LDS_Log * alloc_log(const std::string& name);
+		//分配一个log文件
+        virtual LDS_Log * alloc_log(const std::string& name);
 
-
-
+        
+        //初始化该存储设备
 		virtual int Storage_init(const std::string& storage_path);//e.g., /dev/sdb1
-		virtual int LDS_recover(const std::string& storage_path);//e.g., /dev/sdb1
+		//恢复该存储设备
+        virtual int LDS_recover(const std::string& storage_path);//e.g., /dev/sdb1
 
 	public:
 		//char * online_map;
+        //插槽的个数
 		uint64_t slot_amount;
 
+        //MANIFEST文件 
 		LDS_Log *manifest;
+        //备份的文件
 		LDS_Log *backup;
 
 		//int dev_fd;
@@ -160,7 +179,8 @@ class LDS{
 		int slot_fd;
 
 		char *dev_read_only;
-		uint64_t size;
+		//大小
+        uint64_t size;
 
 
 };
