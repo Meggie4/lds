@@ -50,15 +50,17 @@ LDS_Log::LDS_Log(std::string name){
 
 		//this->buffer=(char *)malloc(SEGMENT_BYTES);
 		if(name.find("MANIFEST")!=-1){
+            //对齐分配内存
 			posix_memalign(&(this->buffer),512,VERSION_LOG_SIZE);//in order for direct IO.
 			phy_offset=0;
+            //64MB
 			load_size=VERSION_LOG_SIZE;
 			
 		}
 		else if(name.find(".log")!=-1){
 			posix_memalign(& (this->buffer) ,512, BACKUP_SIZE);//in order for direct IO.
 			phy_offset= VERSION_LOG_SIZE;
-
+            //16MB,可以存储2个memtable的文件
 			load_size=BACKUP_SIZE;
 		}
 		//memset(this->buffer,0,ENTRY_BYTES)

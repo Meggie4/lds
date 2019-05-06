@@ -123,8 +123,9 @@ class LDS_Others{
 public:
 	void* buffer;
 
-	std::string file_name;//for debug
-
+	std::string file_name;
+    //for debug
+    //
 	uint64_t size;
 
 public:
